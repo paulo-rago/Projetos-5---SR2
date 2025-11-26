@@ -373,7 +373,6 @@ app.layout = html.Div([
             dcc.Tab(label='Análise Estatística', value='analise'),
             dcc.Tab(label='Mapa', value='mapa'),
             dcc.Tab(label='Seletor de Espécies', value='especies'),
-            dcc.Tab(label='Análises do Notebook', value='notebook'),
         ]),
         
         html.Div(id='tab-content', style={'marginTop': '2rem', 'marginBottom': '4rem'}),
@@ -406,8 +405,6 @@ def render_content(tab):
         return render_mapa()
     elif tab == 'especies':
         return render_especies()
-    elif tab == 'notebook':
-        return render_notebook()
     else:
         return dbc.Alert("🚧 Em desenvolvimento...", color="info")
 
@@ -881,229 +878,190 @@ def treinar_classificador():
 # ============================================
 
 def render_analise():
-    """Renderiza a seção de análise estatística com classificador"""
+    """Renderiza a seção de análise estatística com gráficos do notebook"""
     
-    resultados = treinar_classificador()
+    return html.Div([
+        html.H3("📈 Análise Estatística", className="mb-4", style={'color': COLORS['dark'], 'fontWeight': '700'}),
+        
+        # Conteúdo dos gráficos do notebook
+        _render_notebook_graficos()
+    ])
+
+def _render_notebook_graficos():
+    """Função auxiliar para renderizar os gráficos do notebook"""
+    imagens = extrair_imagens_notebook()
     
-    if resultados is None:
-        return html.Div([
-            html.H3("📈 Análise Estatística de Classificadores", className="mb-4"),
-            dbc.Alert([
-                html.I(className="fas fa-exclamation-triangle me-2"),
-                "Não foi possível treinar o classificador. Verifique se há dados suficientes com informações de CAP e Copa."
-            ], color="warning")
-        ])
-    
-    cm = resultados['confusion_matrix']
-    report = resultados['classification_report']
-    roc_data = resultados['roc_curve']
-    pr_data = resultados['pr_curve']
-    
-    # Extrai métricas
-    accuracy = report['accuracy']
-    precision_grande = report['Grande']['precision']
-    recall_grande = report['Grande']['recall']
-    f1_grande = report['Grande']['f1-score']
-    precision_normal = report['Normal']['precision']
-    recall_normal = report['Normal']['recall']
-    f1_normal = report['Normal']['f1-score']
+    if not imagens:
+        return dbc.Alert([
+            html.I(className="fas fa-info-circle me-2"),
+            "Nenhuma imagem encontrada no notebook. Verifique se o arquivo existe e contém outputs de gráficos."
+        ], color="info")
     
     card_style = {
         'height': '100%',
         'borderRadius': '12px',
         'border': f'1px solid {COLORS["border"]}',
         'boxShadow': '0 1px 3px rgba(0,0,0,0.08)',
-        'transition': 'transform 0.2s, box-shadow 0.2s'
+        'transition': 'transform 0.2s, box-shadow 0.2s',
+        'overflow': 'hidden'
     }
     
-    # Cards de métricas
-    metricas_cards = dbc.Row([
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H2(f"{accuracy:.1%}", style={'color': COLORS['primary'], 'fontWeight': '700', 'marginBottom': '0.5rem'}),
-                    html.P("Acurácia", style={'color': COLORS['gray'], 'fontSize': '0.9rem', 'margin': 0}),
-                    html.P("Taxa de acerto geral", style={'color': COLORS['light_gray'], 'fontSize': '0.75rem', 'marginTop': '0.25rem'})
-                ], style={'textAlign': 'center', 'padding': '1.5rem'})
-            ], style=card_style)
-        ], width=12, md=6, lg=3, className="mb-3"),
+    cards = []
+    for idx, img_info in enumerate(imagens):
+        img_base64 = img_info['imagem']
+        titulo = img_info['titulo']
+        descricao = img_info.get('descricao')
+        descricao_detalhada = img_info.get('descricao_detalhada', [])
+        num_axes = img_info.get('num_axes', 1)
         
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H2(f"{precision_grande:.1%}", style={'color': COLORS['primary'], 'fontWeight': '700', 'marginBottom': '0.5rem'}),
-                    html.P("Precisão (Grande)", style={'color': COLORS['gray'], 'fontSize': '0.9rem', 'margin': 0}),
-                    html.P("Confiança no alerta", style={'color': COLORS['light_gray'], 'fontSize': '0.75rem', 'marginTop': '0.25rem'})
-                ], style={'textAlign': 'center', 'padding': '1.5rem'})
-            ], style=card_style)
-        ], width=12, md=6, lg=3, className="mb-3"),
+        # Limpa o título removendo tags HTML e caracteres especiais
+        titulo_limpo = titulo.replace('<Figure size ', '').replace(' with ', ' - ').replace(' Axes>', ' eixos').replace(' Axe>', ' eixo').replace('>', '')
+        if titulo_limpo.startswith('<'):
+            titulo_limpo = f"Visualização {idx + 1}"
         
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H2(f"{recall_grande:.1%}", style={'color': COLORS['primary'], 'fontWeight': '700', 'marginBottom': '0.5rem'}),
-                    html.P("Recall (Grande)", style={'color': COLORS['gray'], 'fontSize': '0.9rem', 'margin': 0}),
-                    html.P("Sensibilidade", style={'color': COLORS['light_gray'], 'fontSize': '0.75rem', 'marginTop': '0.25rem'})
-                ], style={'textAlign': 'center', 'padding': '1.5rem'})
-            ], style=card_style)
-        ], width=12, md=6, lg=3, className="mb-3"),
+        # Gráficos com múltiplos eixos (subplots) ocupam largura total
+        # Se tiver mais de 1 eixo, usa largura total (12), senão usa metade (6)
+        col_width = 12 if num_axes > 1 else 6
         
-        dbc.Col([
-            dbc.Card([
-                dbc.CardBody([
-                    html.H2(f"{f1_grande:.1%}", style={'color': COLORS['primary'], 'fontWeight': '700', 'marginBottom': '0.5rem'}),
-                    html.P("F1-Score (Grande)", style={'color': COLORS['gray'], 'fontSize': '0.9rem', 'margin': 0}),
-                    html.P("Média harmônica", style={'color': COLORS['light_gray'], 'fontSize': '0.75rem', 'marginTop': '0.25rem'})
-                ], style={'textAlign': 'center', 'padding': '1.5rem'})
-            ], style=card_style)
-        ], width=12, md=6, lg=3, className="mb-3"),
-    ], className="mb-4")
-    
-    # Matriz de Confusão
-    fig_cm = go.Figure(data=go.Heatmap(
-        z=cm,
-        x=['Normal (Previsto)', 'Grande (Previsto)'],
-        y=['Normal (Real)', 'Grande (Real)'],
-        colorscale='Blues',
-        text=cm,
-        texttemplate='%{text}',
-        textfont={"size": 16},
-        showscale=True
-    ))
-    fig_cm.update_layout(
-        title='Matriz de Confusão',
-        height=400,
-        margin=dict(l=0, r=0, t=50, b=0)
-    )
-    
-    # Curva ROC
-    fig_roc = go.Figure()
-    fig_roc.add_trace(go.Scatter(
-        x=roc_data['fpr'],
-        y=roc_data['tpr'],
-        mode='lines',
-        name=f'ROC (AUC = {roc_data["auc"]:.3f})',
-        line=dict(color=COLORS['primary'], width=3)
-    ))
-    fig_roc.add_trace(go.Scatter(
-        x=[0, 1],
-        y=[0, 1],
-        mode='lines',
-        name='Linha de Referência',
-        line=dict(color='gray', dash='dash', width=2)
-    ))
-    fig_roc.update_layout(
-        title=f'Curva ROC (AUC = {roc_data["auc"]:.3f})',
-        xaxis_title='Taxa de Falsos Positivos',
-        yaxis_title='Taxa de Verdadeiros Positivos',
-        height=400,
-        margin=dict(l=0, r=0, t=50, b=0),
-        hovermode='closest'
-    )
-    
-    # Curva Precision-Recall
-    fig_pr = go.Figure()
-    fig_pr.add_trace(go.Scatter(
-        x=pr_data['recall'],
-        y=pr_data['precision'],
-        mode='lines',
-        name=f'Precision-Recall (AP = {pr_data["auc"]:.3f})',
-        line=dict(color=COLORS['primary'], width=3),
-        fill='tozeroy'
-    ))
-    fig_pr.update_layout(
-        title=f'Curva Precision-Recall (AP = {pr_data["auc"]:.3f})',
-        xaxis_title='Recall',
-        yaxis_title='Precisão',
-        height=400,
-        margin=dict(l=0, r=0, t=50, b=0),
-        hovermode='closest'
-    )
-    
-    # Análise textual
-    analise_textual = html.Div([
-        html.H5("📊 Análise das Métricas", className="mb-3", style={'fontWeight': '700'}),
-        html.Div([
-            html.P([
-                html.Strong("Acurácia ({:.1%}): ".format(accuracy)),
-                "É a taxa de acerto geral do modelo. De cada 100 árvores, o modelo acerta a classificação de {:.0f}. ".format(accuracy * 100),
-                "É uma métrica útil, mas pode ser enganosa quando há desbalanceamento de classes."
-            ], style={'marginBottom': '1rem', 'lineHeight': '1.8'}),
+        # Verifica se o gráfico está sozinho na linha
+        esta_sozinho = False
+        if num_axes == 1:
+            # Verifica o gráfico anterior
+            anterior_tem_1_eixo = False
+            if idx > 0:
+                anterior_num_axes = imagens[idx - 1].get('num_axes', 1)
+                anterior_tem_1_eixo = anterior_num_axes == 1
             
-            html.P([
-                html.Strong("Precisão ({:.1%}): ".format(precision_grande)),
-                "Quando o modelo diz que uma árvore é GRANDE, ele está correto em {:.1%} das vezes. ".format(precision_grande),
-                "Uma precisão alta significa que a prefeitura pode confiar nos alertas do sistema, evitando gastos com vistorias desnecessárias."
-            ], style={'marginBottom': '1rem', 'lineHeight': '1.8'}),
+            # Verifica o próximo gráfico
+            proximo_tem_1_eixo = False
+            if idx < len(imagens) - 1:
+                proximo_num_axes = imagens[idx + 1].get('num_axes', 1)
+                proximo_tem_1_eixo = proximo_num_axes == 1
             
-            html.P([
-                html.Strong("Recall ({:.1%}): ".format(recall_grande)),
-                "Das árvores que realmente são grandes, o modelo consegue detectar {:.1%}. ".format(recall_grande),
-                "Esta é uma métrica crítica para segurança pública - um recall baixo significa que muitas árvores grandes passam despercebidas, "
-                "aumentando o risco de quedas e acidentes."
-            ], style={'marginBottom': '1rem', 'lineHeight': '1.8'}),
-            
-            html.P([
-                html.Strong("F1-Score ({:.1%}): ".format(f1_grande)),
-                "É a média harmônica entre precisão e recall, oferecendo um equilíbrio entre as duas métricas. "
-                "Um F1-score alto indica que o modelo tem bom desempenho tanto em evitar falsos alarmes quanto em detectar árvores grandes."
-            ], style={'marginBottom': '1rem', 'lineHeight': '1.8'}),
-            
-            html.Hr(),
-            
-            html.H6("💡 Implicações Práticas", className="mt-3 mb-2", style={'fontWeight': '700', 'color': COLORS['primary']}),
-            html.P([
-                "O modelo desenvolvido demonstra alta capacidade técnica (AUC de {:.3f}) para distinguir o porte das árvores apenas pelo diâmetro do tronco (CAP). ".format(roc_data['auc']),
-                "Atualmente, ele opera com uma precisão de {:.1%}, o que significa que é eficiente em direcionar equipes de poda sem desperdiçar recursos com vistorias desnecessárias. ".format(precision_grande),
-                "No entanto, na configuração atual, o sistema prioriza a economia de recursos e acaba não detectando cerca de {:.1%} das árvores de grande porte (Recall de {:.1%}). ".format(
-                    (1 - recall_grande) * 100, recall_grande
-                ),
-                "Para fins de segurança pública (evitar queda de árvores), recomenda-se um ajuste no sistema para torná-lo mais sensível, "
-                "aceitando-se um leve aumento nas vistorias em troca de garantir que nenhuma árvore grande passe despercebida."
-            ], style={'lineHeight': '1.8', 'fontStyle': 'italic', 'color': COLORS['dark']})
-        ], style={'padding': '1.5rem', 'background': COLORS['background'], 'borderRadius': '8px'})
-    ])
+            # Está sozinho se:
+            # - É o primeiro E o próximo não tem 1 eixo (ou não existe)
+            # - O anterior não tem 1 eixo E o próximo não tem 1 eixo (ou não existe)
+            # - É o último E o anterior não tem 1 eixo
+            if idx == 0:
+                esta_sozinho = not proximo_tem_1_eixo
+            elif idx == len(imagens) - 1:
+                esta_sozinho = not anterior_tem_1_eixo
+            else:
+                esta_sozinho = not anterior_tem_1_eixo and not proximo_tem_1_eixo
+        
+        # Verifica se é o gráfico específico sobre distribuição das alturas
+        eh_grafico_alturas = num_axes == 1 and descricao and 'distribuição das alturas das árvores' in descricao.lower()
+        
+        # Offset para centralizar se estiver sozinho (offset de 3 = centraliza coluna de 6)
+        # Centraliza apenas o gráfico de alturas quando tiver 1 eixo
+        if eh_grafico_alturas:
+            offset = 3  # Centraliza gráfico de alturas
+        elif esta_sozinho and num_axes == 1:
+            offset = 3
+        else:
+            offset = 0
+        
+        # Ajusta altura máxima baseado no número de eixos
+        max_height = '1000px' if num_axes > 3 else ('900px' if num_axes > 1 else '600px')
+        
+        # Conteúdo do card
+        card_content = []
+        
+        # Header com título
+        card_content.append(
+            dbc.CardHeader([
+                html.H6(titulo_limpo, className="m-0", style={'fontWeight': '600', 'fontSize': '0.95rem'})
+            ], style={'background': 'white', 'borderBottom': f'1px solid {COLORS["border"]}', 'padding': '1rem'})
+        )
+        
+        # Descrição detalhada (sempre exibida)
+        descricao_body = []
+        
+        if descricao_detalhada:
+            for secao in descricao_detalhada:
+                titulo_secao = secao.get('titulo', '')
+                texto_secao = secao.get('texto', '')
+                
+                if titulo_secao and texto_secao:
+                    descricao_body.append(
+                        html.Div([
+                            html.H6(
+                                titulo_secao,
+                                style={
+                                    'color': COLORS['dark'],
+                                    'fontSize': '0.95rem',
+                                    'fontWeight': '700',
+                                    'marginBottom': '0.5rem',
+                                    'marginTop': '1rem' if len(descricao_body) > 0 else '0'
+                                }
+                            ),
+                            html.P(
+                                texto_secao,
+                                style={
+                                    'color': COLORS['gray'],
+                                    'fontSize': '0.9rem',
+                                    'lineHeight': '1.8',
+                                    'marginBottom': '0.75rem',
+                                    'textAlign': 'justify'
+                                }
+                            )
+                        ])
+                    )
+        else:
+            # Fallback para descrição simples se não houver descrição detalhada
+            descricao_limpa = descricao.replace('**', '').replace('##', '').replace('#', '').strip() if descricao else "Este gráfico evidencia características das árvores no Recife"
+            descricao_body.append(
+                html.P(
+                    descricao_limpa,
+                    style={
+                        'color': COLORS['gray'],
+                        'fontSize': '0.9rem',
+                        'lineHeight': '1.6',
+                        'marginBottom': '1rem',
+                        'fontStyle': 'italic'
+                    }
+                )
+            )
+        
+        card_content.append(
+            dbc.CardBody(
+                descricao_body,
+                style={'padding': '1rem 1.5rem 0.5rem 1.5rem'}
+            )
+        )
+        
+        # Imagem
+        card_content.append(
+            dbc.CardBody([
+                html.Img(
+                    src=f"data:image/png;base64,{img_base64}",
+                    style={
+                        'width': '100%',
+                        'height': 'auto',
+                        'objectFit': 'contain',
+                        'borderRadius': '8px',
+                        'maxHeight': max_height
+                    }
+                )
+            ], style={'padding': '1.5rem', 'textAlign': 'center'})
+        )
+        
+        # Aplica offset se necessário para centralizar
+        col_class = f"mb-4"
+        if offset > 0:
+            col_class += f" offset-lg-{offset}"
+        
+        card = dbc.Col([
+            dbc.Card(card_content, style=card_style)
+        ], width=12, lg=col_width, className=col_class)
+        cards.append(card)
     
     return html.Div([
-        html.H3("📈 Análise Estatística de Classificadores", className="mb-4"),
         html.P(
-            "Avaliação de desempenho de classificador para identificar árvores grandes (copa > 6m) baseado no CAP (Circunferência à Altura do Peito).",
+            f"Visualizações e gráficos gerados durante a análise dos dados do censo arbóreo. Total de {len(imagens)} visualização(ões) encontrada(s).",
             style={'color': COLORS['gray'], 'fontSize': '0.95rem', 'marginBottom': '2rem'}
         ),
-        
-        metricas_cards,
-        
-        html.Hr(className="my-4"),
-        
-        dbc.Row([
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardBody([
-                        dcc.Graph(figure=fig_cm, config={'displayModeBar': False})
-                    ])
-                ], style=card_style)
-            ], width=12, lg=4, className="mb-4"),
-            
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardBody([
-                        dcc.Graph(figure=fig_roc, config={'displayModeBar': False})
-                    ])
-                ], style=card_style)
-            ], width=12, lg=4, className="mb-4"),
-            
-            dbc.Col([
-                dbc.Card([
-                    dbc.CardBody([
-                        dcc.Graph(figure=fig_pr, config={'displayModeBar': False})
-                    ])
-                ], style=card_style)
-            ], width=12, lg=4, className="mb-4"),
-        ], className="mb-4"),
-        
-        html.Hr(className="my-4"),
-        
-        analise_textual
+        dbc.Row(cards, className="g-4")
     ])
 def render_especies(): return html.Div([html.H3("Seletor de Espécies"), dbc.Alert("🚧 Em desenvolvimento...", color="info")])
 
@@ -1466,189 +1424,6 @@ def extrair_imagens_notebook():
 # ============================================
 # FUNÇÃO DE RENDERIZAÇÃO DO NOTEBOOK
 # ============================================
-
-def render_notebook():
-    """Renderiza a seção com os resultados do notebook"""
-    imagens = extrair_imagens_notebook()
-    
-    if not imagens:
-        return html.Div([
-            html.H3("📓 Análises do Notebook", className="mb-4"),
-            dbc.Alert([
-                html.I(className="fas fa-info-circle me-2"),
-                "Nenhuma imagem encontrada no notebook. Verifique se o arquivo existe e contém outputs de gráficos."
-            ], color="info")
-        ])
-    
-    card_style = {
-        'height': '100%',
-        'borderRadius': '12px',
-        'border': f'1px solid {COLORS["border"]}',
-        'boxShadow': '0 1px 3px rgba(0,0,0,0.08)',
-        'transition': 'transform 0.2s, box-shadow 0.2s',
-        'overflow': 'hidden'
-    }
-    
-    cards = []
-    for idx, img_info in enumerate(imagens):
-        img_base64 = img_info['imagem']
-        titulo = img_info['titulo']
-        descricao = img_info.get('descricao')
-        descricao_detalhada = img_info.get('descricao_detalhada', [])
-        num_axes = img_info.get('num_axes', 1)
-        
-        # Limpa o título removendo tags HTML e caracteres especiais
-        titulo_limpo = titulo.replace('<Figure size ', '').replace(' with ', ' - ').replace(' Axes>', ' eixos').replace(' Axe>', ' eixo').replace('>', '')
-        if titulo_limpo.startswith('<'):
-            titulo_limpo = f"Visualização {idx + 1}"
-        
-        # Gráficos com múltiplos eixos (subplots) ocupam largura total
-        # Se tiver mais de 1 eixo, usa largura total (12), senão usa metade (6)
-        col_width = 12 if num_axes > 1 else 6
-        
-        # Verifica se o gráfico está sozinho na linha
-        esta_sozinho = False
-        if num_axes == 1:
-            # Verifica o gráfico anterior
-            anterior_tem_1_eixo = False
-            if idx > 0:
-                anterior_num_axes = imagens[idx - 1].get('num_axes', 1)
-                anterior_tem_1_eixo = anterior_num_axes == 1
-            
-            # Verifica o próximo gráfico
-            proximo_tem_1_eixo = False
-            if idx < len(imagens) - 1:
-                proximo_num_axes = imagens[idx + 1].get('num_axes', 1)
-                proximo_tem_1_eixo = proximo_num_axes == 1
-            
-            # Está sozinho se:
-            # - É o primeiro E o próximo não tem 1 eixo (ou não existe)
-            # - O anterior não tem 1 eixo E o próximo não tem 1 eixo (ou não existe)
-            # - É o último E o anterior não tem 1 eixo
-            if idx == 0:
-                esta_sozinho = not proximo_tem_1_eixo
-            elif idx == len(imagens) - 1:
-                esta_sozinho = not anterior_tem_1_eixo
-            else:
-                esta_sozinho = not anterior_tem_1_eixo and not proximo_tem_1_eixo
-        
-        # Verifica se é o gráfico específico sobre distribuição das alturas
-        eh_grafico_alturas = num_axes == 1 and descricao and 'distribuição das alturas das árvores' in descricao.lower()
-        
-        # Offset para centralizar se estiver sozinho (offset de 3 = centraliza coluna de 6)
-        # Centraliza apenas o gráfico de alturas quando tiver 1 eixo
-        if eh_grafico_alturas:
-            offset = 3  # Centraliza gráfico de alturas
-        elif esta_sozinho and num_axes == 1:
-            offset = 3
-        else:
-            offset = 0
-        
-        # Ajusta altura máxima baseado no número de eixos
-        max_height = '1000px' if num_axes > 3 else ('900px' if num_axes > 1 else '600px')
-        
-        # Conteúdo do card
-        card_content = []
-        
-        # Header com título
-        card_content.append(
-            dbc.CardHeader([
-                html.H6(titulo_limpo, className="m-0", style={'fontWeight': '600', 'fontSize': '0.95rem'})
-            ], style={'background': 'white', 'borderBottom': f'1px solid {COLORS["border"]}', 'padding': '1rem'})
-        )
-        
-        # Descrição detalhada (sempre exibida)
-        descricao_body = []
-        
-        if descricao_detalhada:
-            for secao in descricao_detalhada:
-                titulo_secao = secao.get('titulo', '')
-                texto_secao = secao.get('texto', '')
-                
-                if titulo_secao and texto_secao:
-                    descricao_body.append(
-                        html.Div([
-                            html.H6(
-                                titulo_secao,
-                                style={
-                                    'color': COLORS['dark'],
-                                    'fontSize': '0.95rem',
-                                    'fontWeight': '700',
-                                    'marginBottom': '0.5rem',
-                                    'marginTop': '1rem' if len(descricao_body) > 0 else '0'
-                                }
-                            ),
-                            html.P(
-                                texto_secao,
-                                style={
-                                    'color': COLORS['gray'],
-                                    'fontSize': '0.9rem',
-                                    'lineHeight': '1.8',
-                                    'marginBottom': '0.75rem',
-                                    'textAlign': 'justify'
-                                }
-                            )
-                        ])
-                    )
-        else:
-            # Fallback para descrição simples se não houver descrição detalhada
-            descricao_limpa = descricao.replace('**', '').replace('##', '').replace('#', '').strip() if descricao else "Este gráfico evidencia características das árvores no Recife"
-            descricao_body.append(
-                html.P(
-                    descricao_limpa,
-                    style={
-                        'color': COLORS['gray'],
-                        'fontSize': '0.9rem',
-                        'lineHeight': '1.6',
-                        'marginBottom': '1rem',
-                        'fontStyle': 'italic'
-                    }
-                )
-            )
-        
-        card_content.append(
-            dbc.CardBody(
-                descricao_body,
-                style={'padding': '1rem 1.5rem 0.5rem 1.5rem'}
-            )
-        )
-        
-        # Imagem
-        card_content.append(
-            dbc.CardBody([
-                html.Img(
-                    src=f"data:image/png;base64,{img_base64}",
-                    style={
-                        'width': '100%',
-                        'height': 'auto',
-                        'objectFit': 'contain',
-                        'borderRadius': '8px',
-                        'maxHeight': max_height
-                    }
-                )
-            ], style={'padding': '1.5rem', 'textAlign': 'center'})
-        )
-        
-        # Aplica offset se necessário para centralizar
-        col_class = f"mb-4"
-        if offset > 0:
-            col_class += f" offset-lg-{offset}"
-        
-        card = dbc.Col([
-            dbc.Card(card_content, style=card_style)
-        ], width=12, lg=col_width, className=col_class)
-        cards.append(card)
-    
-    return html.Div([
-        html.Div([
-            html.H3("📓 Análises do Notebook", className="mb-2", style={'color': COLORS['dark'], 'fontWeight': '700'}),
-            html.P(
-                f"Visualizações e gráficos gerados durante a análise dos dados do censo arbóreo. Total de {len(imagens)} visualização(ões) encontrada(s).",
-                style={'color': COLORS['gray'], 'fontSize': '0.95rem', 'marginBottom': '2rem'}
-            )
-        ], style={'marginBottom': '1.5rem'}),
-        dbc.Row(cards, className="g-4")
-    ])
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
